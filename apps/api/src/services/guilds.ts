@@ -13,6 +13,43 @@ export interface ManageableGuild {
   inviteUrl: string | null;
 }
 
+/** Liefert die Rollen-IDs eines Mitglieds (über das Bot-Token). */
+export type MemberRoleLookup = (guildId: string, userId: string) => Promise<string[]>;
+
+let memberRoleLookup: MemberRoleLookup | null = null;
+
+/** Wird beim API-Start gesetzt, sobald ein Bot-Token vorhanden ist. */
+export function setMemberRoleLookup(lookup: MemberRoleLookup | null): void {
+  memberRoleLookup = lookup;
+}
+
+/**
+ * Prüft den Dashboard-Zugriff. Die Mitgliedsrollen werden nur nachgeladen, wenn
+ * Owner/Admin/Server-verwalten nicht greifen und Manager-Rollen konfiguriert sind.
+ */
+async function evaluateWithManagerRoles(input: {
+  userId: string;
+  guild: DiscordOAuthGuild;
+  managerRoleIds: string[];
+}) {
+  const base = {
+    userId: input.userId,
+    ownerId: input.guild.owner ? input.userId : null,
+    isOwnerFlag: input.guild.owner,
+    permissions: input.guild.permissions,
+    managerRoleIds: input.managerRoleIds,
+  };
+  const first = evaluateDashboardAccess({ ...base, memberRoleIds: [] });
+  if (first.allowed || !input.managerRoleIds.length || !memberRoleLookup) return first;
+  let memberRoleIds: string[] = [];
+  try {
+    memberRoleIds = await memberRoleLookup(input.guild.id, input.userId);
+  } catch {
+    return first;
+  }
+  return evaluateDashboardAccess({ ...base, memberRoleIds });
+}
+
 function iconUrl(guildId: string, icon: string | null): string | null {
   if (!icon) return null;
   const ext = icon.startsWith("a_") ? "gif" : "png";
@@ -31,20 +68,20 @@ export async function listManageableGuilds(input: {
     where: { guildId: { in: input.oauthGuilds.map((g) => g.id) } },
     select: { guildId: true, managerRoleIds: true },
   });
-  const managerByGuild = new Map(settings.map((s) => [s.guildId, s.managerRoleIds]));
+  const managerByGuild = new Map<string, string[]>(
+    settings.map((s: { guildId: string; managerRoleIds: string[] }) => [s.guildId, s.managerRoleIds]),
+  );
   const result: ManageableGuild[] = [];
 
   for (const guild of input.oauthGuilds) {
-    const access = evaluateDashboardAccess({
+    const botInstalled = installedIds.has(guild.id);
+    const access = await evaluateWithManagerRoles({
       userId: input.userId,
-      ownerId: guild.owner ? input.userId : null,
-      isOwnerFlag: guild.owner,
-      permissions: guild.permissions,
-      managerRoleIds: managerByGuild.get(guild.id) ?? [],
-      memberRoleIds: [],
+      guild,
+      // Rollen lassen sich nur abfragen, wenn der Bot auf dem Server ist.
+      managerRoleIds: botInstalled ? (managerByGuild.get(guild.id) ?? []) : [],
     });
     if (!access.allowed) continue;
-    const botInstalled = installedIds.has(guild.id);
     result.push({
       id: guild.id,
       name: guild.name,
@@ -73,13 +110,10 @@ export async function ensureGuildAccess(input: {
     select: { managerRoleIds: true },
   });
 
-  const access = evaluateDashboardAccess({
+  const access = await evaluateWithManagerRoles({
     userId: input.userId,
-    ownerId: guild.owner ? input.userId : null,
-    isOwnerFlag: guild.owner,
-    permissions: guild.permissions,
+    guild,
     managerRoleIds: settings?.managerRoleIds ?? [],
-    memberRoleIds: [],
   });
   if (!access.allowed) throw guildForbidden();
   return guild;
