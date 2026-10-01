@@ -1,6 +1,7 @@
 import { loadBotEnv } from "@nexaly/config";
 import { prisma } from "@nexaly/database";
 import { createLogger } from "@nexaly/logger";
+import { Status } from "discord.js";
 import Redis from "ioredis";
 import { createBotClient } from "./client.js";
 import { bindCommandHandler, registerCommands } from "./commands/register.js";
@@ -39,10 +40,20 @@ async function main(): Promise<void> {
       });
       log.info("Slash commands registered");
     }
-    await redis.set("bot:heartbeat:0", new Date().toISOString(), "EX", 30);
-    setInterval(() => {
-      void redis.set("bot:heartbeat:0", new Date().toISOString(), "EX", 30);
-    }, 15_000);
+    // Herzschlag nur schreiben, solange der Bot wirklich mit dem Discord-Gateway verbunden ist.
+    // Läuft der Container, aber die Verbindung ist weg, läuft der Schlüssel nach 30 s ab
+    // und /api/status/bot meldet 503 (Uptime Kuma schlägt Alarm).
+    const beat = async () => {
+      if (!client.isReady() || client.ws.status !== Status.Ready) return;
+      await redis.set(
+        "bot:heartbeat:0",
+        JSON.stringify({ ts: new Date().toISOString(), ping: client.ws.ping, guilds: client.guilds.cache.size }),
+        "EX",
+        30,
+      );
+    };
+    await beat();
+    setInterval(() => void beat().catch((error) => log.warn({ err: error }, "heartbeat failed")), 15_000);
   });
 
   const shutdown = async (signal: string) => {
