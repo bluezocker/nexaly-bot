@@ -1,0 +1,24 @@
+{
+  "name": "@nexaly/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "echo skip",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo ok",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@nexaly/config": "workspace:*",
+    "@nexaly/logger": "workspace:*",
+    "@nexaly/database": "workspace:*",
+    "@nexaly/shared": "workspace:*",
+    "@napi-rs/canvas": "^0.1.65",
+    "ioredis": "^5.4.2",
+    "tsx": "^4.19.2"
+  },
+  "devDependencies": { "tsx": "^4.19.2", "typescript": "^5.7.2", "vitest": "^2.1.8" }
+}

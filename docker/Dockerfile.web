@@ -1,0 +1,24 @@
+# Nexaly web dashboard
+FROM node:22-alpine AS deps
+RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
+WORKDIR /app
+COPY tsconfig.base.json package.json pnpm-workspace.yaml pnpm-lock.yaml* turbo.json ./
+COPY packages ./packages
+COPY apps/web ./apps/web
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PUBLIC_WEB_URL=https://nexaly.app
+RUN pnpm install --frozen-lockfile=false
+RUN pnpm --filter @nexaly/web build
+
+FROM node:22-alpine
+RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
+RUN addgroup -S nexaly && adduser -S nexaly -G nexaly
+WORKDIR /app
+COPY --from=deps /app /app
+RUN mkdir -p /app/apps/web/.next/cache/images && chmod -R 777 /app/apps/web/.next/cache
+USER nexaly
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PUBLIC_WEB_URL=https://nexaly.app
+EXPOSE 3000
+CMD ["pnpm", "--filter", "@nexaly/web", "start"]

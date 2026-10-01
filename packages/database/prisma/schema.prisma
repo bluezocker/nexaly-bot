@@ -1,0 +1,428 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String    @id
+  username    String
+  globalName  String?
+  avatar      String?
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  sessions    Session[]
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Guild {
+  id          String    @id
+  name        String
+  icon        String?
+  ownerId     String
+  botJoinedAt DateTime?
+  memberCount Int?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  settings      GuildSettings?
+  modules       GuildModule[]
+  auditEntries  AuditEntry[]
+  logSettings   LogSettings?
+  logEventSettings LogEventSetting[]
+  logEvents     LogEvent[]
+  moderation    ModerationSettings?
+  moderationRules ModerationRule[]
+  cases         ModerationCase[]
+  warnings      Warning[]
+  ladder        EscalationLadder[]
+  welcome       WelcomeSettings?
+  assets        Asset[]
+  levelSettings LevelSettings?
+  memberLevels  MemberLevel[]
+  levelRewards  LevelReward[]
+  embeds        EmbedTemplate[]
+  streamSubs    StreamSubscription[]
+  reactionRoles ReactionRole[]
+  ticketSettings TicketSettings?
+  tickets        Ticket[]
+  socialSubs     SocialSubscription[]
+}
+
+model GuildSettings {
+  guildId               String    @id
+  guild                 Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  locale                String    @default("de")
+  timezone              String    @default("Europe/Berlin")
+  managerRoleIds        String[]  @default([])
+  dataRetentionDays     Int       @default(90)
+  deletedMessageLogDays Int       @default(30)
+}
+
+model GuildModule {
+  id      String  @id @default(cuid())
+  guildId String
+  guild   Guild   @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  key     String
+  enabled Boolean @default(false)
+
+  @@unique([guildId, key])
+}
+
+model LogSettings {
+  guildId String @id
+  guild   Guild  @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+model LogEventSetting {
+  id        String  @id @default(cuid())
+  guildId   String
+  guild     Guild   @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  eventKey  String
+  enabled   Boolean @default(false)
+  channelId String?
+
+  @@unique([guildId, eventKey])
+}
+
+model LogEvent {
+  id        String    @id @default(cuid())
+  guildId   String
+  guild     Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  eventKey  String
+  payload   Json
+  actorId   String?
+  createdAt DateTime  @default(now())
+  expiresAt DateTime?
+
+  @@index([guildId, eventKey, createdAt])
+  @@index([expiresAt])
+}
+
+enum RaidAction {
+  ALERT
+  LOCKDOWN
+  RESTRICT_NEW
+  VERIFY_GATE
+}
+
+enum ModerationRuleType {
+  WORD
+  INVITE
+  DOMAIN
+  CUSTOM
+}
+
+enum MatchMode {
+  EXACT
+  CONTAINS
+  REGEX
+  WORD_BOUNDARY
+}
+
+enum ModAction {
+  DELETE
+  WARN
+  TIMEOUT
+  KICK
+  BAN
+  UNBAN
+  UNTIMEOUT
+  NOTE
+}
+
+model ModerationSettings {
+  guildId            String     @id
+  guild              Guild      @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  enabled            Boolean    @default(false)
+  logChannelId       String?
+  ignoreRoleIds      String[]   @default([])
+  ignoreChannelIds   String[]   @default([])
+  spamEnabled        Boolean    @default(true)
+  spamMessages       Int        @default(5)
+  spamWindowSec      Int        @default(5)
+  duplicateEnabled   Boolean    @default(true)
+  duplicateCount     Int        @default(3)
+  mentionLimit       Int        @default(8)
+  emojiLimit         Int        @default(12)
+  capsPercent        Int        @default(80)
+  capsMinLength      Int        @default(12)
+  linkSpamLimit      Int        @default(4)
+  inviteBlock        Boolean    @default(true)
+  allowedDomains     String[]   @default([])
+  blockedDomains     String[]   @default([])
+  raidEnabled        Boolean    @default(false)
+  raidJoins          Int        @default(10)
+  raidWindowSec      Int        @default(15)
+  raidAction         RaidAction @default(ALERT)
+  raidAlertChannelId String?
+  minAccountAgeHours Int?
+}
+
+model ModerationRule {
+  id               String             @id @default(cuid())
+  guildId          String
+  guild            Guild              @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  type             ModerationRuleType
+  pattern          String
+  matchMode        MatchMode          @default(CONTAINS)
+  action           ModAction
+  durationSec      Int?
+  enabled          Boolean            @default(true)
+  exceptRoleIds    String[]           @default([])
+  exceptChannelIds String[]           @default([])
+
+  @@index([guildId, enabled])
+}
+
+model ModerationCase {
+  id          String     @id @default(cuid())
+  caseNumber  Int
+  guildId     String
+  guild       Guild      @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  targetId    String
+  moderatorId String
+  action      ModAction
+  reason      String?
+  durationSec Int?
+  expiresAt   DateTime?
+  createdAt   DateTime   @default(now())
+  warnings    Warning[]
+
+  @@unique([guildId, caseNumber])
+  @@index([guildId, targetId])
+  @@index([guildId, createdAt])
+}
+
+model Warning {
+  id        String         @id @default(cuid())
+  guildId   String
+  guild     Guild          @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  userId    String
+  caseId    String
+  case      ModerationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  createdAt DateTime       @default(now())
+
+  @@index([guildId, userId])
+}
+
+model EscalationLadder {
+  guildId     String
+  step        Int
+  action      ModAction
+  durationSec Int?
+  guild       Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, step])
+}
+
+enum WelcomeMode {
+  TEXT
+  EMBED
+  IMAGE
+}
+
+enum AssetKind {
+  WELCOME_BG
+  CUSTOM_THUMB
+}
+
+model WelcomeSettings {
+  guildId           String      @id
+  guild             Guild       @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  enabled           Boolean     @default(false)
+  channelId         String?
+  sendDm            Boolean     @default(false)
+  dmTemplate        String?
+  mode              WelcomeMode @default(EMBED)
+  textTemplate      String?
+  embedJson         Json?
+  backgroundAssetId String?
+  textColor         String      @default("#FFFFFF")
+  accentColor       String      @default("#7C5CFF")
+  avatarX           Float       @default(0.5)
+  avatarY           Float       @default(0.35)
+  nameX             Float       @default(0.5)
+  nameY             Float       @default(0.62)
+  customText        String?
+}
+
+model Asset {
+  id         String    @id @default(cuid())
+  guildId    String
+  guild      Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  kind       AssetKind
+  mime       String
+  sizeBytes  Int
+  storageKey String
+  createdBy  String
+  createdAt  DateTime  @default(now())
+}
+
+model LevelSettings {
+  guildId            String  @id
+  guild              Guild   @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  enabled            Boolean @default(false)
+  xpMin              Int     @default(15)
+  xpMax              Int     @default(25)
+  cooldownSec        Int     @default(60)
+  announceChannelId  String?
+  stackRoles         Boolean @default(true)
+  ignoredChannelIds  String[] @default([])
+  ignoredRoleIds     String[] @default([])
+}
+
+model MemberLevel {
+  guildId     String
+  userId      String
+  xp          Int      @default(0)
+  level       Int      @default(0)
+  lastXpAt    DateTime?
+  guild       Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, userId])
+  @@index([guildId, xp])
+}
+
+model LevelReward {
+  id      String @id @default(cuid())
+  guildId String
+  guild   Guild  @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  level   Int
+  roleId  String
+
+  @@unique([guildId, level])
+}
+
+enum StreamPlatform {
+  TWITCH
+  YOUTUBE
+  KICK
+}
+
+model StreamSubscription {
+  id                String          @id @default(cuid())
+  guildId           String
+  guild             Guild           @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  platform          StreamPlatform
+  channelKey        String
+  externalId        String
+  displayName       String
+  announceChannelId String
+  mentionRoleId     String?
+  template          String?
+  enabled           Boolean         @default(true)
+  lastLiveAt        DateTime?
+  lastOfflineAt     DateTime?
+
+  @@unique([guildId, platform, channelKey])
+  @@index([enabled, platform])
+}
+
+model ReactionRole {
+  id        String   @id @default(cuid())
+  guildId   String
+  guild     Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  channelId String
+  messageId String
+  emoji     String
+  roleId    String
+  createdAt DateTime @default(now())
+
+  @@unique([messageId, emoji])
+  @@index([guildId, messageId])
+}
+
+model TicketSettings {
+  guildId        String  @id
+  guild          Guild   @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  enabled        Boolean @default(false)
+  panelChannelId String?
+  categoryId     String?
+  staffRoleId    String?
+  logChannelId   String?
+  panelTitle     String  @default("Support")
+  panelText      String  @default("Klicke auf den Button, um ein Ticket zu öffnen.")
+  openMessage    String  @default("Beschreibe dein Anliegen. Ein Teammitglied meldet sich.")
+}
+
+model Ticket {
+  id        String    @id @default(cuid())
+  guildId   String
+  guild     Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  number    Int
+  channelId String    @unique
+  ownerId   String
+  status    String    @default("open")
+  createdAt DateTime  @default(now())
+  closedAt  DateTime?
+
+  @@unique([guildId, number])
+  @@index([guildId, status])
+}
+
+enum SocialPlatform {
+  X
+  THREADS
+}
+
+model SocialSubscription {
+  id                String         @id @default(cuid())
+  guildId           String
+  guild             Guild          @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  platform          SocialPlatform
+  accountKey        String
+  externalId        String
+  displayName       String
+  announceChannelId String
+  enabled           Boolean        @default(true)
+  lastPostId        String?
+  lastError         String?
+  accessToken       String?
+  tokenExpiresAt    DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@unique([guildId, platform, accountKey])
+  @@index([enabled, platform])
+}
+
+model EmbedTemplate {
+  id        String   @id @default(cuid())
+  guildId   String
+  guild     Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  name      String
+  content   String?
+  embed     Json
+  updatedBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([guildId, updatedAt])
+}
+
+model AuditEntry {
+  id        String   @id @default(cuid())
+  guildId   String
+  guild     Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  actorId   String
+  action    String
+  target    String?
+  diff      Json?
+  createdAt DateTime @default(now())
+
+  @@index([guildId, createdAt])
+}
