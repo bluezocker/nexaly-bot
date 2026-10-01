@@ -43,6 +43,82 @@ export const moderationSettingsUpdateSchema = z
   })
   .strict();
 
+/** Maximale Nachrichtenlänge, die gegen Regex-Regeln geprüft wird. */
+export const REGEX_MAX_INPUT = 2000;
+
+/**
+ * Statische Prüfung gegen katastrophales Backtracking (ReDoS).
+ * Lehnt ab: ungültige Muster, Rückverweise, Lookarounds und quantifizierte
+ * Gruppen, die selbst Quantoren oder Alternativen enthalten – z. B. (a+)+, (a|aa)*, (\w+\s?)*.
+ * Konservativ: lieber ein harmloses Muster ablehnen als den Bot einfrieren.
+ */
+export function isRegexPatternSafe(pattern: string): boolean {
+  if (!pattern || pattern.length > 80) return false;
+  try {
+    new RegExp(pattern, "i");
+  } catch {
+    return false;
+  }
+  if (/\\[1-9]|\\k<|\(\?<?[=!]/.test(pattern)) return false;
+
+  // Pro offener Gruppe merken, ob darin ein Quantor oder "|" vorkommt.
+  const stack: { risky: boolean }[] = [];
+  let unbounded = 0;
+  let quantifiers = 0;
+  let lastGroupRisky = false;
+  for (let i = 0; i < pattern.length; i++) {
+    const ch = pattern[i];
+    if (ch === "\\") {
+      i++;
+      lastGroupRisky = false;
+      continue;
+    }
+    if (ch === "[") {
+      // Zeichenklasse überspringen
+      i++;
+      if (pattern[i] === "^") i++;
+      if (pattern[i] === "]") i++;
+      while (i < pattern.length && pattern[i] !== "]") {
+        if (pattern[i] === "\\") i++;
+        i++;
+      }
+      lastGroupRisky = false;
+      continue;
+    }
+    if (ch === "(") {
+      stack.push({ risky: false });
+      lastGroupRisky = false;
+      continue;
+    }
+    if (ch === ")") {
+      const group = stack.pop();
+      lastGroupRisky = group?.risky ?? false;
+      if (group?.risky && stack.length) stack[stack.length - 1]!.risky = true;
+      continue;
+    }
+    if (ch === "|") {
+      if (stack.length) stack[stack.length - 1]!.risky = true;
+      lastGroupRisky = false;
+      continue;
+    }
+    const isQuant = ch === "*" || ch === "+" || ch === "?" || ch === "{";
+    if (isQuant) {
+      quantifiers++;
+      if (ch === "*" || ch === "+" || (ch === "{" && /^\{\d*,\}/.test(pattern.slice(i)))) unbounded++;
+      if (lastGroupRisky) return false; // quantifizierte Gruppe mit innerem Quantor/Alternative
+      if (stack.length) stack[stack.length - 1]!.risky = true;
+      if (ch === "{") while (i < pattern.length && pattern[i] !== "}") i++;
+      if (pattern[i + 1] === "?") i++; // lazy
+      lastGroupRisky = false;
+      continue;
+    }
+    lastGroupRisky = false;
+  }
+  // Viele unbegrenzte Quantoren hintereinander (.*a.*b.*c) wachsen polynomiell.
+  // Lange Ketten optionaler Teile (a?a?a?…aaa) wachsen exponentiell.
+  return unbounded <= 2 && quantifiers <= 10;
+}
+
 export const moderationRuleSchema = z
   .object({
     type: z.enum(["WORD", "INVITE", "DOMAIN", "CUSTOM"]),
@@ -54,7 +130,12 @@ export const moderationRuleSchema = z
     exceptRoleIds: z.array(snowflake).max(25),
     exceptChannelIds: z.array(snowflake).max(25),
   })
-  .strict();
+  .strict()
+  .refine((rule) => rule.matchMode !== "REGEX" || isRegexPatternSafe(rule.pattern), {
+    path: ["pattern"],
+    message:
+      "Regex ist ungültig oder zu riskant (verschachtelte Wiederholungen wie (a+)+, Rückverweise oder mehr als zwei * / +).",
+  });
 
 export type ModerationSettingsUpdate = z.infer<typeof moderationSettingsUpdateSchema>;
 export type ModerationRuleInput = z.infer<typeof moderationRuleSchema>;
@@ -193,9 +274,9 @@ export function matchWordRule(
       return new RegExp(`(?:^|\\W)${escaped}(?:$|\\W)`, "i").test(content);
     }
     case "REGEX": {
-      if (rule.pattern.length > 80) return false;
+      if (!isRegexPatternSafe(rule.pattern)) return false;
       try {
-        return new RegExp(rule.pattern, "i").test(content);
+        return new RegExp(rule.pattern, "i").test(content.slice(0, REGEX_MAX_INPUT));
       } catch {
         return false;
       }

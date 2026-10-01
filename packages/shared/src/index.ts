@@ -41,6 +41,8 @@ export {
   detectCaps,
   detectLinks,
   matchWordRule,
+  isRegexPatternSafe,
+  REGEX_MAX_INPUT,
   nextLadderAction,
   normalizeForDuplicate,
   normalizeHost,
