@@ -27,7 +27,7 @@ async function main(): Promise<void> {
   registerWelcomeModule(client, redis, subscriber);
   registerLevelsModule(client, redis, subscriber);
   registerReactionRoles(client);
-  registerTickets(client);
+  registerTickets(client, redis);
 
   client.once("ready", async (readyClient) => {
     log.info({ user: readyClient.user.tag, guilds: readyClient.guilds.cache.size }, "Nexaly online");

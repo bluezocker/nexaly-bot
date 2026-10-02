@@ -111,7 +111,7 @@ export function TicketsForm(props: {
               empty="Rolle"
             />
           </Field>
-          <Field label="Log-Kanal, optional">
+          <Field label="Log-Kanal für Protokolle, optional">
             <Select
               value={settings.logChannelId ?? ""}
               onChange={(value) => patch({ logChannelId: value || null })}

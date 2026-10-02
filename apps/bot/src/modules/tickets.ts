@@ -13,8 +13,17 @@ import {
   type GuildMember,
   type TextChannel,
 } from "discord.js";
+import type Redis from "ioredis";
+import { saveTicketTranscript, TranscriptError } from "./ticket-transcript.js";
 
 const log = createLogger("tickets");
+
+// Tickets, für die gerade ein Protokoll erstellt wird (verhindert doppelte Protokolle bei Doppelklick).
+const busyChannels = new Set<string>();
+
+function transcriptProblem(error: unknown): string {
+  return error instanceof TranscriptError ? error.message : "Unerwarteter Fehler, Details stehen im Bot-Log.";
+}
 
 function staff(member: GuildMember, staffRoleId: string | null): boolean {
   if (member.permissions.has(PermissionFlagsBits.ManageChannels)) return true;
@@ -103,6 +112,8 @@ async function openTicketLocked(interaction: ButtonInteraction): Promise<void> {
             PermissionFlagsBits.ViewChannel,
             PermissionFlagsBits.SendMessages,
             PermissionFlagsBits.ManageChannels,
+            // Für das Ticket-Protokoll
+            PermissionFlagsBits.ReadMessageHistory,
           ],
         },
       ],
@@ -150,7 +161,7 @@ async function openTicketLocked(interaction: ButtonInteraction): Promise<void> {
   await interaction.editReply(`Ticket erstellt: ${channel}`);
 }
 
-async function closeTicket(interaction: ButtonInteraction, guild: Guild): Promise<void> {
+async function closeTicket(interaction: ButtonInteraction, guild: Guild, redis: Redis): Promise<void> {
   const ticket = await prisma.ticket.findUnique({ where: { channelId: interaction.channelId } });
   if (!ticket || ticket.status !== "open") {
     await interaction.reply({ ephemeral: true, content: "Hier ist kein offenes Ticket." });
@@ -164,19 +175,51 @@ async function closeTicket(interaction: ButtonInteraction, guild: Guild): Promis
     await interaction.reply({ ephemeral: true, content: "Nur der Ersteller oder das Team kann das Ticket schließen." });
     return;
   }
-  await prisma.ticket.update({
-    where: { id: ticket.id },
-    data: { status: "closed", closedAt: new Date() },
-  });
-  const channel = interaction.channel;
-  if (channel?.isTextBased() && "permissionOverwrites" in channel) {
-    await channel.permissionOverwrites.edit(ticket.ownerId, { SendMessages: false }).catch(() => undefined);
-    if ("setName" in channel) await channel.setName(`closed-${ticket.number}`).catch(() => undefined);
+  if (busyChannels.has(interaction.channelId)) {
+    await interaction.reply({ ephemeral: true, content: "Dieses Ticket wird gerade verarbeitet." });
+    return;
   }
-  await interaction.reply(`Ticket #${ticket.number} ist geschlossen.`);
+  busyChannels.add(interaction.channelId);
+  try {
+    const closedAt = new Date();
+    await prisma.ticket.update({
+      where: { id: ticket.id },
+      data: { status: "closed", closedAt },
+    });
+    // Zuerst antworten: Discord erwartet die Antwort innerhalb von 3 Sekunden.
+    await interaction.reply(`Ticket #${ticket.number} ist geschlossen.`);
+    const channel = interaction.channel;
+    if (channel?.isTextBased() && "permissionOverwrites" in channel) {
+      await channel.permissionOverwrites.edit(ticket.ownerId, { SendMessages: false }).catch(() => undefined);
+      // Umbenennen ist bei Discord stark limitiert (2x pro 10 Minuten) – nicht darauf warten.
+      if ("setName" in channel) void channel.setName(`closed-${ticket.number}`).catch(() => undefined);
+    }
+    if (channel && channel.isTextBased() && !channel.isDMBased()) {
+      try {
+        await saveTicketTranscript({
+          guild,
+          channel,
+          ticket: { ...ticket, closedAt },
+          logChannelId: settings?.logChannelId ?? null,
+          closedBy: interaction.user,
+          redis,
+        });
+      } catch (error) {
+        log.error({ err: error, guildId: guild.id, ticket: ticket.number }, "ticket transcript failed");
+        await interaction
+          .followUp({
+            ephemeral: true,
+            content: `Das Protokoll konnte nicht im Log-Kanal gespeichert werden: ${transcriptProblem(error)}`,
+          })
+          .catch(() => undefined);
+      }
+    }
+  } finally {
+    busyChannels.delete(interaction.channelId);
+  }
 }
 
-async function deleteTicket(interaction: ButtonInteraction, guild: Guild): Promise<void> {
+async function deleteTicket(interaction: ButtonInteraction, guild: Guild, redis: Redis): Promise<void> {
   const member = interaction.member;
   if (!member || !("roles" in member)) return;
   const settings = await prisma.ticketSettings.findUnique({ where: { guildId: guild.id } });
@@ -184,25 +227,65 @@ async function deleteTicket(interaction: ButtonInteraction, guild: Guild): Promi
     await interaction.reply({ ephemeral: true, content: "Nur das Team kann den Kanal löschen." });
     return;
   }
-  const ticket = await prisma.ticket.findUnique({ where: { channelId: interaction.channelId } });
-  if (ticket && ticket.status === "open") {
-    await prisma.ticket.update({
-      where: { id: ticket.id },
-      data: { status: "closed", closedAt: new Date() },
-    });
+  if (busyChannels.has(interaction.channelId)) {
+    await interaction.reply({ ephemeral: true, content: "Dieses Ticket wird gerade verarbeitet." });
+    return;
   }
-  await interaction.reply("Kanal wird gelöscht.");
-  const channel = interaction.channel;
-  if (channel && "delete" in channel) await channel.delete("Nexaly ticket").catch(() => undefined);
+  busyChannels.add(interaction.channelId);
+  try {
+    let ticket = await prisma.ticket.findUnique({ where: { channelId: interaction.channelId } });
+    if (ticket && ticket.status === "open") {
+      ticket = await prisma.ticket.update({
+        where: { id: ticket.id },
+        data: { status: "closed", closedAt: new Date() },
+      });
+    }
+    const channel = interaction.channel;
+    const withTranscript = Boolean(ticket && settings?.logChannelId);
+    await interaction.reply(
+      withTranscript ? "Protokoll wird gespeichert, danach wird der Kanal gelöscht." : "Kanal wird gelöscht.",
+    );
+
+    if (ticket && channel && channel.isTextBased() && !channel.isDMBased()) {
+      try {
+        // Nur senden, wenn seit dem Protokoll beim Schließen noch etwas geschrieben wurde.
+        await saveTicketTranscript({
+          guild,
+          channel,
+          ticket,
+          logChannelId: settings?.logChannelId ?? null,
+          closedBy: interaction.user,
+          redis,
+          onlyIfChanged: true,
+        });
+      } catch (error) {
+        // Ohne gesichertes Protokoll nicht löschen – sonst ist der Verlauf endgültig weg.
+        log.error({ err: error, guildId: guild.id, ticket: ticket.number }, "ticket transcript failed");
+        await interaction
+          .followUp({
+            ephemeral: true,
+            content:
+              `Das Protokoll konnte nicht gespeichert werden: ${transcriptProblem(error)}\n` +
+              "Der Kanal wurde deshalb **nicht** gelöscht. Behebe das Problem und klicke erneut auf Löschen, " +
+              "oder lösche den Kanal von Hand, wenn du kein Protokoll brauchst.",
+          })
+          .catch(() => undefined);
+        return;
+      }
+    }
+    if (channel && "delete" in channel) await channel.delete("Nexaly ticket").catch(() => undefined);
+  } finally {
+    busyChannels.delete(interaction.channelId);
+  }
 }
 
-export function registerTickets(client: Client): void {
+export function registerTickets(client: Client, redis: Redis): void {
   client.on(Events.InteractionCreate, (interaction) => {
     if (!interaction.isButton() || !interaction.guild) return;
     const run = async () => {
       if (interaction.customId === "ticket:open") return openTicket(interaction);
-      if (interaction.customId === "ticket:close") return closeTicket(interaction, interaction.guild!);
-      if (interaction.customId === "ticket:delete") return deleteTicket(interaction, interaction.guild!);
+      if (interaction.customId === "ticket:close") return closeTicket(interaction, interaction.guild!, redis);
+      if (interaction.customId === "ticket:delete") return deleteTicket(interaction, interaction.guild!, redis);
     };
     void run().catch((error) => {
       log.error({ err: error }, "ticket interaction failed");

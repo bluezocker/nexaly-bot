@@ -142,6 +142,12 @@ export default function DocsPage() {
           Schließen sperrt das Schreiben und benennt den Kanal um. Löschen darf nur das Team oder jemand mit Kanäle verwalten.
           Dafür braucht der Bot die Berechtigung Kanäle verwalten.
         </p>
+        <p>
+          Ist ein Log-Kanal gesetzt, speichert Nexaly beim Schließen ein Protokoll dort: eine HTML-Datei mit dem ganzen Verlauf, die du herunterlädst und im Browser öffnest.
+          Bilder bis 2 MB sind eingebettet, andere Anhänge stehen nur mit Namen drin.
+          Wird nach dem Schließen noch geschrieben, kommt beim Löschen ein aktualisiertes Protokoll.
+          Kann das Protokoll nicht gespeichert werden, löscht der Bot den Kanal nicht. Im Log-Kanal braucht er Nachrichten senden, Links einbetten und Dateien anhängen.
+        </p>
       </Section>
 
       <Section id="social" title="Social">
