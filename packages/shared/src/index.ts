@@ -112,6 +112,15 @@ export {
 } from "./settings.js";
 export { ticketSettingsSchema, type TicketSettingsInput } from "./tickets.js";
 export {
+  renderTicketTranscript,
+  formatTranscriptContent,
+  escapeHtml,
+  type TranscriptInput,
+  type TranscriptMessage,
+  type TranscriptAttachment,
+  type TranscriptEmbed,
+} from "./ticket-transcript.js";
+export {
   SOCIAL_PLATFORMS,
   socialSubscriptionSchema,
   normalizeHandle,
