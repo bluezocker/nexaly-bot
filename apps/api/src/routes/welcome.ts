@@ -87,7 +87,8 @@ export async function registerWelcomeRoutes(app: FastifyInstance, deps: AppDeps)
     return { ok: true };
   });
 
-  app.post("/v1/guilds/:guildId/welcome/background", async (request) => {
+  // Base64 macht 2 MB Bild zu ~2,7 MB JSON – Fastify-Standard (1 MB) reicht dafür nicht.
+  app.post("/v1/guilds/:guildId/welcome/background", { bodyLimit: 4 * 1024 * 1024 }, async (request) => {
     const params = guildParams.parse(request.params);
     const { userId } = await authorize(deps, request, params.guildId);
     const parsed = uploadBody.safeParse(request.body);

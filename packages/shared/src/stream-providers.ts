@@ -116,23 +116,45 @@ function youtubeProvider(env: StreamProviderEnv): StreamProvider {
     },
     async getLiveStatus(externalId) {
       if (!env.YOUTUBE_API_KEY) throw new NotConfiguredError("YouTube");
+      // Der RSS-Feed kostet kein API-Kontingent und listet auch laufende/geplante Streams.
+      // search?eventType=live kostete 100 Einheiten pro Aufruf, videos.list kostet nur 1.
+      const videoIds = await fetchYoutubeFeedVideoIds(externalId);
+      if (!videoIds.length) return { live: false };
       const url =
-        `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${encodeURIComponent(externalId)}` +
-        `&eventType=live&type=video&key=${env.YOUTUBE_API_KEY}`;
+        `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoIds.join(",")}` +
+        `&key=${env.YOUTUBE_API_KEY}`;
       const response = await fetch(url);
-      if (!response.ok) throw new Error(`YouTube live search failed: ${response.status}`);
+      if (!response.ok) throw new Error(`YouTube videos lookup failed: ${response.status}`);
       const json = (await response.json()) as {
-        items?: { id: { videoId: string }; snippet: { title: string } }[];
+        items?: { id: string; snippet: { title: string; liveBroadcastContent?: string } }[];
       };
-      const item = json.items?.[0];
+      const item = json.items?.find((video) => video.snippet.liveBroadcastContent === "live");
       if (!item) return { live: false };
       return {
         live: true,
         title: item.snippet.title,
-        url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
+        url: `https://www.youtube.com/watch?v=${item.id}`,
       };
     },
   };
+}
+
+/** Liefert die IDs der neuesten Videos eines Kanals aus dem öffentlichen RSS-Feed (max. 10). */
+export async function fetchYoutubeFeedVideoIds(channelId: string, limit = 10): Promise<string[]> {
+  const response = await fetch(
+    `https://www.youtube.com/feeds/videos.xml?channel_id=${encodeURIComponent(channelId)}`,
+  );
+  if (!response.ok) throw new Error(`YouTube feed failed: ${response.status}`);
+  return parseYoutubeFeedVideoIds(await response.text(), limit);
+}
+
+export function parseYoutubeFeedVideoIds(xml: string, limit = 10): string[] {
+  const ids: string[] = [];
+  for (const match of xml.matchAll(/<yt:videoId>([\w-]{6,20})<\/yt:videoId>/g)) {
+    if (match[1] && !ids.includes(match[1])) ids.push(match[1]);
+    if (ids.length >= limit) break;
+  }
+  return ids;
 }
 
 function kickProvider(env: StreamProviderEnv): StreamProvider {

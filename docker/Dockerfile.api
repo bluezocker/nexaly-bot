@@ -13,6 +13,8 @@ RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 RUN addgroup -S nexaly && adduser -S nexaly -G nexaly
 WORKDIR /app
 COPY --from=deps /app /app
+# Upload-Ordner muss dem App-Nutzer gehören (Welcome-Hintergründe)
+RUN mkdir -p /app/uploads && chown nexaly:nexaly /app/uploads
 USER nexaly
 ENV NODE_ENV=production
 EXPOSE 3001

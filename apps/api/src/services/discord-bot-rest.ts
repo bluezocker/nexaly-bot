@@ -209,3 +209,14 @@ export async function addBotReaction(
     });
   }
 }
+
+/** Rollen-IDs eines Mitglieds; leeres Array, wenn der Nutzer nicht (mehr) auf dem Server ist. */
+export async function fetchMemberRoleIds(botToken: string, guildId: string, userId: string): Promise<string[]> {
+  const response = await fetch(`${DISCORD_API_BASE}/guilds/${guildId}/members/${userId}`, {
+    headers: { Authorization: `Bot ${botToken}` },
+  });
+  if (response.status === 404) return [];
+  if (!response.ok) throw new Error(`Discord member lookup failed: ${response.status}`);
+  const member = (await response.json()) as { roles?: string[] };
+  return member.roles ?? [];
+}

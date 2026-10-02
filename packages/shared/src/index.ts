@@ -41,6 +41,8 @@ export {
   detectCaps,
   detectLinks,
   matchWordRule,
+  isRegexPatternSafe,
+  REGEX_MAX_INPUT,
   nextLadderAction,
   normalizeForDuplicate,
   normalizeHost,
@@ -97,7 +99,11 @@ export {
   type LiveStreamInfo,
   type StreamProvider,
 } from "./streams.js";
-export { createStreamProviders, type StreamProviderEnv } from "./stream-providers.js";
+export {
+  createStreamProviders,
+  parseYoutubeFeedVideoIds,
+  type StreamProviderEnv,
+} from "./stream-providers.js";
 export {
   MODULE_LABELS,
   TIMEZONES,

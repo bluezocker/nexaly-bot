@@ -21,9 +21,27 @@ function staff(member: GuildMember, staffRoleId: string | null): boolean {
   return Boolean(staffRoleId && member.roles.cache.has(staffRoleId));
 }
 
+// Ticket-Öffnungen pro Server nacheinander abarbeiten. Sonst erzeugen Doppelklicks
+// zwei Kanäle bzw. zwei gleichzeitige Nutzer dieselbe Ticketnummer.
+const guildQueues = new Map<string, Promise<void>>();
+
+function withGuildLock(guildId: string, task: () => Promise<void>): Promise<void> {
+  const previous = guildQueues.get(guildId) ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(task);
+  guildQueues.set(guildId, next);
+  return next.finally(() => {
+    if (guildQueues.get(guildId) === next) guildQueues.delete(guildId);
+  });
+}
+
 async function openTicket(interaction: ButtonInteraction): Promise<void> {
   if (!interaction.guild || !interaction.guildId) return;
   await interaction.deferReply({ ephemeral: true });
+  await withGuildLock(interaction.guildId, () => openTicketLocked(interaction));
+}
+
+async function openTicketLocked(interaction: ButtonInteraction): Promise<void> {
+  if (!interaction.guild || !interaction.guildId) return;
   const settings = await prisma.ticketSettings.findUnique({ where: { guildId: interaction.guildId } });
   if (!settings?.enabled || !settings.categoryId || !settings.staffRoleId) {
     await interaction.editReply("Tickets sind auf diesem Server nicht eingerichtet.");
@@ -95,9 +113,15 @@ async function openTicket(interaction: ButtonInteraction): Promise<void> {
     return;
   }
 
-  await prisma.ticket.create({
-    data: { guildId: guild.id, number, channelId: channel.id, ownerId: interaction.user.id },
-  });
+  try {
+    await prisma.ticket.create({
+      data: { guildId: guild.id, number, channelId: channel.id, ownerId: interaction.user.id },
+    });
+  } catch (error) {
+    // Kanal nicht verwaist zurücklassen
+    await channel.delete("Nexaly ticket konnte nicht gespeichert werden").catch(() => undefined);
+    throw error;
+  }
 
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId("ticket:close").setLabel("Schließen").setStyle(ButtonStyle.Secondary),
