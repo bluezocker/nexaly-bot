@@ -1,5 +1,7 @@
+import { notFound } from "@nexaly/shared";
 import type { FastifyInstance } from "fastify";
 import type { AppDeps } from "../app.js";
+import { loadPublicLeaderboard, publicLeaderboardCacheKey } from "../services/leaderboard.js";
 
 function iconUrl(guildId: string, icon: string | null): string | null {
   if (!icon) return null;
@@ -30,6 +32,25 @@ export async function registerPublicRoutes(app: FastifyInstance, deps: AppDeps):
     if (payload.count > 0) {
       await deps.redis.set(cacheKey, JSON.stringify(payload), "EX", 30);
     }
+    return payload;
+  });
+
+  app.get("/v1/public/leaderboard/:guildId", async (request) => {
+    const { guildId } = request.params as { guildId: string };
+    if (!/^\d{17,20}$/.test(guildId)) throw notFound("Rangliste nicht gefunden");
+
+    const cacheKey = publicLeaderboardCacheKey(guildId);
+    const cached = await deps.redis.get(cacheKey);
+    if (cached) {
+      const value = JSON.parse(cached) as unknown;
+      if (value === null) throw notFound("Rangliste nicht gefunden");
+      return value;
+    }
+
+    const payload = await loadPublicLeaderboard(deps.prisma, guildId);
+    // Auch "nicht vorhanden" kurz merken, damit wahllose Aufrufe die Datenbank nicht belasten.
+    await deps.redis.set(cacheKey, JSON.stringify(payload), "EX", payload ? 60 : 30);
+    if (!payload) throw notFound("Rangliste nicht gefunden");
     return payload;
   });
 }

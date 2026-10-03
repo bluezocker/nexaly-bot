@@ -28,10 +28,12 @@ export async function grantMessageXp(input: {
   const before = current?.level ?? 0;
   const after = levelFromXp(xp).level;
 
+  // Name und Avatar mitschreiben, damit Ranglisten ohne Discord-Abfrage auskommen.
+  const profile = memberProfile(member);
   await prisma.memberLevel.upsert({
     where: { guildId_userId: { guildId: member.guild.id, userId: member.id } },
-    create: { guildId: member.guild.id, userId: member.id, xp, level: after, lastXpAt: new Date() },
-    update: { xp, level: after, lastXpAt: new Date() },
+    create: { guildId: member.guild.id, userId: member.id, xp, level: after, lastXpAt: new Date(), ...profile },
+    update: { xp, level: after, lastXpAt: new Date(), ...profile },
   });
 
   if (after > before) {
@@ -46,6 +48,13 @@ export async function grantMessageXp(input: {
         .catch(() => undefined);
     }
   }
+}
+
+export function memberProfile(member: GuildMember): { displayName: string; avatarUrl: string } {
+  return {
+    displayName: member.displayName.slice(0, 64),
+    avatarUrl: member.displayAvatarURL({ extension: "png", size: 128 }),
+  };
 }
 
 async function applyRewards(member: GuildMember, level: number, config: LevelRuntime): Promise<void> {

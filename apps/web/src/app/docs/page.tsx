@@ -104,6 +104,11 @@ export default function DocsPage() {
           Rollenbelohnungen hängen an einem Level. Die Rolle muss unter der Bot-Rolle liegen.
         </p>
         <p>/rank zeigt das eigene oder ein anderes Level. /leaderboard die Rangliste des Servers.</p>
+        <p>
+          Die öffentliche Rangliste schaltest du im Dashboard unter Level ein. Dann zeigt eine eigene Seite die besten 100 Mitglieder
+          mit Anzeigename, Avatar, Level und XP, ohne Anmeldung. Wer den Server verlassen hat, bevor Nexaly seinen Namen kannte, fehlt dort.
+          Ist der Schalter aus, gibt es die Seite nicht.
+        </p>
       </Section>
 
       <Section id="streams" title="Live-Alerts">

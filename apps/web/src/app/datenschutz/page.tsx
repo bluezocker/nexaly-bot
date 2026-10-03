@@ -21,6 +21,10 @@ export default function PrivacyPage() {
           Discord-Nutzer-ID, Benutzername, Avatar, Server-Mitgliedschaft und Modul-Konfigurationen.
           Nachrichteninhalte nur, soweit ein Log-Event das vorsieht.
         </p>
+        <p>
+          Im Levelsystem zusätzlich XP, Level, Anzeigename und Avatar je Server. Schaltet ein Server die öffentliche
+          Rangliste ein, sind Anzeigename, Avatar, Level und XP der besten Mitglieder dort ohne Anmeldung sichtbar.
+        </p>
       </section>
       <section className="grid gap-2">
         <h2 className="text-base font-semibold text-white">Zweck</h2>

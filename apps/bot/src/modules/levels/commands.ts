@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, type ChatInputCommandInteraction } from "discord.js";
 import { prisma } from "@nexaly/database";
 import { levelFromXp } from "@nexaly/shared";
+import { getLevelConfig } from "./config.js";
 
 export const levelCommands = [
   {
@@ -49,7 +50,15 @@ export const levelCommands = [
         await interaction.reply({ content: "Noch keine XP auf diesem Server.", ephemeral: true });
         return;
       }
-      const lines = rows.map((row, index) => `#${index + 1} <@${row.userId}> · Lvl ${row.level} · ${row.xp} XP`);
+      const lines = rows.map(
+        (row: { userId: string; level: number; xp: number }, index: number) =>
+          `#${index + 1} <@${row.userId}> · Lvl ${row.level} · ${row.xp} XP`,
+      );
+      const config = await getLevelConfig(interaction.guildId);
+      const webUrl = process.env.PUBLIC_WEB_URL?.replace(/\/+$/, "");
+      if (config?.enabled && config.publicLeaderboard && webUrl) {
+        lines.push("", `Ganze Rangliste: ${webUrl}/leaderboard/${interaction.guildId}`);
+      }
       await interaction.reply({ content: lines.join("\n"), ephemeral: true });
     },
   },

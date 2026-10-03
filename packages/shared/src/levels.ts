@@ -12,6 +12,8 @@ export const levelSettingsUpdateSchema = z
     stackRoles: z.boolean(),
     ignoredChannelIds: z.array(snowflake).max(50),
     ignoredRoleIds: z.array(snowflake).max(25),
+    /** Rangliste öffentlich unter /leaderboard/<guildId> anzeigen */
+    publicLeaderboard: z.boolean().default(false),
     rewards: z
       .array(
         z.object({

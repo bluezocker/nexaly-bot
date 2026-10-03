@@ -283,6 +283,8 @@ model LevelSettings {
   stackRoles         Boolean @default(true)
   ignoredChannelIds  String[] @default([])
   ignoredRoleIds     String[] @default([])
+  /// Rangliste unter /leaderboard/<guildId> ohne Anmeldung sichtbar
+  publicLeaderboard  Boolean @default(false)
 }
 
 model MemberLevel {
@@ -291,6 +293,9 @@ model MemberLevel {
   xp          Int      @default(0)
   level       Int      @default(0)
   lastXpAt    DateTime?
+  /// Anzeigename und Avatar zum Zeitpunkt der letzten XP-Vergabe (für Ranglisten)
+  displayName String?
+  avatarUrl   String?
   guild       Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@id([guildId, userId])

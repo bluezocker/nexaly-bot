@@ -5,6 +5,7 @@ import type { AppDeps } from "../app.js";
 import { requireDiscordToken, requireUser } from "../app.js";
 import { fetchCurrentUserGuilds } from "../services/discord-oauth.js";
 import { ensureGuildAccess } from "../services/guilds.js";
+import { publicLeaderboardCacheKey } from "../services/leaderboard.js";
 
 const guildParams = z.object({ guildId: z.string().regex(/^\d{17,20}$/) });
 
@@ -36,8 +37,9 @@ export async function registerLevelRoutes(app: FastifyInstance, deps: AppDeps): 
       enabled: moduleRow?.enabled ?? settings?.enabled ?? false,
       settings,
       rewards,
-      leaderboard: top.map((row) => ({
+      leaderboard: top.map((row: { userId: string; xp: number; level: number; displayName: string | null }) => ({
         userId: row.userId,
+        displayName: row.displayName,
         xp: row.xp,
         level: row.level,
       })),
@@ -71,6 +73,7 @@ export async function registerLevelRoutes(app: FastifyInstance, deps: AppDeps): 
           stackRoles: data.stackRoles,
           ignoredChannelIds: data.ignoredChannelIds,
           ignoredRoleIds: data.ignoredRoleIds,
+          publicLeaderboard: data.publicLeaderboard,
         },
         update: {
           enabled: data.enabled,
@@ -81,6 +84,7 @@ export async function registerLevelRoutes(app: FastifyInstance, deps: AppDeps): 
           stackRoles: data.stackRoles,
           ignoredChannelIds: data.ignoredChannelIds,
           ignoredRoleIds: data.ignoredRoleIds,
+          publicLeaderboard: data.publicLeaderboard,
         },
       });
       await tx.levelReward.deleteMany({ where: { guildId: params.guildId } });
@@ -97,6 +101,8 @@ export async function registerLevelRoutes(app: FastifyInstance, deps: AppDeps): 
         data: { guildId: params.guildId, actorId: userId, action: "levels.update" },
       });
     });
+    // Damit Ein-/Ausschalten der öffentlichen Rangliste sofort greift
+    await deps.redis.del(publicLeaderboardCacheKey(params.guildId));
     await deps.redis.publish(configChannel(params.guildId), JSON.stringify({ module: "levels" }));
     return { ok: true };
   });

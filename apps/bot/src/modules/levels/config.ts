@@ -9,6 +9,7 @@ export interface LevelRuntime {
   stackRoles: boolean;
   ignoredChannelIds: string[];
   ignoredRoleIds: string[];
+  publicLeaderboard: boolean;
   rewards: { level: number; roleId: string }[];
 }
 
@@ -36,6 +37,7 @@ export async function getLevelConfig(guildId: string): Promise<LevelRuntime | nu
     stackRoles: settings?.stackRoles ?? true,
     ignoredChannelIds: settings?.ignoredChannelIds ?? [],
     ignoredRoleIds: settings?.ignoredRoleIds ?? [],
+    publicLeaderboard: settings?.publicLeaderboard ?? false,
     rewards: rewards.map((row) => ({ level: row.level, roleId: row.roleId })),
   };
   cache.set(guildId, runtime);
