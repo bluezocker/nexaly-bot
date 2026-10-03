@@ -33,3 +33,22 @@ describe("level curve", () => {
     expect(parsed.success).toBe(false);
   });
 });
+
+describe("öffentliche Rangliste in den Level-Einstellungen", () => {
+  const base = {
+    enabled: true,
+    xpMin: 15,
+    xpMax: 25,
+    cooldownSec: 60,
+    announceChannelId: null,
+    stackRoles: true,
+    ignoredChannelIds: [],
+    ignoredRoleIds: [],
+    rewards: [],
+  };
+
+  it("ist ohne Angabe ausgeschaltet", () => {
+    expect(levelSettingsUpdateSchema.parse(base).publicLeaderboard).toBe(false);
+    expect(levelSettingsUpdateSchema.parse({ ...base, publicLeaderboard: true }).publicLeaderboard).toBe(true);
+  });
+});

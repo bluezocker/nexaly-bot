@@ -15,9 +15,10 @@ export function LevelsForm(props: {
     stackRoles?: boolean;
     ignoredChannelIds?: string[];
     ignoredRoleIds?: string[];
+    publicLeaderboard?: boolean;
   } | null;
   rewards: Reward[];
-  leaderboard: { userId: string; xp: number; level: number }[];
+  leaderboard: { userId: string; displayName?: string | null; xp: number; level: number }[];
   channels: { id: string; name: string }[];
 }) {
   const [enabled, setEnabled] = useState(props.enabled);
@@ -27,6 +28,7 @@ export function LevelsForm(props: {
   const [announceChannelId, setAnnounceChannelId] = useState(props.settings?.announceChannelId ?? "");
   const [stackRoles, setStackRoles] = useState(props.settings?.stackRoles ?? true);
   const [ignoredChannels, setIgnoredChannels] = useState((props.settings?.ignoredChannelIds ?? []).join(", "));
+  const [publicLeaderboard, setPublicLeaderboard] = useState(props.settings?.publicLeaderboard ?? false);
   const [rewards, setRewards] = useState(props.rewards);
   const [newLevel, setNewLevel] = useState(5);
   const [newRole, setNewRole] = useState("");
@@ -44,6 +46,7 @@ export function LevelsForm(props: {
       stackRoles,
       ignoredChannelIds: ignoredChannels.split(",").map((s) => s.trim()).filter(Boolean),
       ignoredRoleIds: props.settings?.ignoredRoleIds ?? [],
+      publicLeaderboard,
       rewards,
     };
     const response = await fetch(`/api/guilds/${props.guildId}/levels`, {
@@ -133,6 +136,35 @@ export function LevelsForm(props: {
         </ul>
       </section>
 
+      <section className="flex items-start justify-between gap-4 rounded-2xl border border-nx-border bg-nx-card p-5">
+        <div>
+          <h3 className="font-semibold">Öffentliche Rangliste</h3>
+          <p className="mt-1 text-sm text-nx-muted">
+            Zeigt die besten 100 Mitglieder auf einer Seite, die jeder ohne Anmeldung öffnen kann. Sichtbar sind
+            Anzeigename, Avatar, Level und XP.
+          </p>
+          {publicLeaderboard ? (
+            <p className="mt-2 text-sm">
+              <a
+                href={`/leaderboard/${props.guildId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-nx-accent-soft hover:underline"
+              >
+                Rangliste öffnen
+              </a>
+              <span className="text-nx-muted"> · erreichbar, sobald gespeichert und das Levelsystem an ist</span>
+            </p>
+          ) : null}
+        </div>
+        <input
+          type="checkbox"
+          aria-label="Öffentliche Rangliste"
+          checked={publicLeaderboard}
+          onChange={(e) => setPublicLeaderboard(e.target.checked)}
+        />
+      </section>
+
       <section className="rounded-2xl border border-nx-border bg-nx-card p-5">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-nx-muted">Leaderboard</h3>
         {props.leaderboard.length === 0 ? (
@@ -141,7 +173,7 @@ export function LevelsForm(props: {
           <ul className="mt-2 space-y-1 text-sm text-nx-muted">
             {props.leaderboard.map((row, index) => (
               <li key={row.userId}>
-                #{index + 1} {row.userId} · Lvl {row.level} · {row.xp} XP
+                #{index + 1} {row.displayName ?? row.userId} · Lvl {row.level} · {row.xp} XP
               </li>
             ))}
           </ul>

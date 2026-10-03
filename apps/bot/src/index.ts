@@ -8,6 +8,7 @@ import { bindCommandHandler, registerCommands } from "./commands/register.js";
 import { registerLogsModule } from "./modules/logs/index.js";
 import { registerModerationModule } from "./modules/moderation/index.js";
 import { registerWelcomeModule } from "./modules/welcome/index.js";
+import { backfillLevelProfiles } from "./modules/levels/backfill.js";
 import { registerLevelsModule } from "./modules/levels/index.js";
 import { registerReactionRoles } from "./modules/reaction-roles.js";
 import { registerTickets } from "./modules/tickets.js";
@@ -32,6 +33,8 @@ async function main(): Promise<void> {
   client.once("ready", async (readyClient) => {
     log.info({ user: readyClient.user.tag, guilds: readyClient.guilds.cache.size }, "Nexaly online");
     await syncExistingGuilds(readyClient);
+    // Im Hintergrund: Namen für ältere XP-Einträge nachtragen (für die Rangliste)
+    void backfillLevelProfiles(readyClient);
     if (env.DISCORD_CLIENT_ID) {
       await registerCommands({
         token: env.DISCORD_TOKEN,

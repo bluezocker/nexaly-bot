@@ -14,9 +14,10 @@ type Payload = {
     stackRoles: boolean;
     ignoredChannelIds: string[];
     ignoredRoleIds: string[];
+    publicLeaderboard?: boolean;
   } | null;
   rewards: { level: number; roleId: string }[];
-  leaderboard: { userId: string; xp: number; level: number }[];
+  leaderboard: { userId: string; displayName?: string | null; xp: number; level: number }[];
 };
 
 export default async function LevelsPage({ params }: { params: Promise<{ guildId: string }> }) {
